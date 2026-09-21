@@ -203,7 +203,14 @@ def calculate(path, stage="final"):
                         and r['status'] == 'verified'
                         and r.get('applicable_for_current') is True]
             # Evidence valid for its own period can be obsolete for current ranking.
-            selected = verified[0] if verified else rows[-1]
+            if verified:
+                selected = verified[0]
+            else:
+                allowed_rows = [r for r in reversed(rows) if r['period'] in allowed_periods]
+                selected = next(
+                    (r for r in allowed_rows if r.get('score_basis') in ('evidence', 'default')),
+                    rows[-1],
+                )
             if selected['status'] == 'verified' and selected.get('applicable_for_current') is not True:
                 selected = dict(selected, raw_score=None, weighted_score=0, status='unverified', score_basis='unrated', source_weight=None)
             raw += selected['raw_score'] or 0; weighted += selected['weighted_score']

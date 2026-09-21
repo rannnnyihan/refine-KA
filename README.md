@@ -97,18 +97,26 @@ python scripts/gen_company_html.py --run runs/my-run --draft
 | 档位建议 | `python scripts/jev_decide.py judge-band` | 定性指标封闭档位 |
 | 语义复核 | `python scripts/jev_decide.py verify-claims` | claim ↔ 原文 |
 
+**推荐完整链路**（不要只跑 route-evidence）：
+
+```
+搜索 → jev/*-search.json → screen-search → Agent 开 keep 页
+     → jev/*-passages.json → route-evidence → Agent 只对 matches 写 raw
+```
+
+- **Jev**：筛链接、路由 passage 到维度（概率 + matches）
+- **Agent**：摘录原文、定 band 标签、写 searches、完成 saturated 的 S1–S4 补查
+- **Python**：ingest / score / audit（Jev 输出不进 evidence.json）
+
 配置方式（任选其一）：
 
 ```bash
 export TYPESAFE_API_KEY="your-key"
+export SSL_CERT_FILE=$(python3 -m certifi)   # macOS 常见
 # 或在 skill 根目录创建 .env（已在 .gitignore，勿提交）
 ```
 
-详见 [`references/jev-integration.md`](references/jev-integration.md)。
-
-推荐分工：
-
-> **搜索工具负责找 → Jev 负责筛/路由/判断 → Python 负责规则与数学 → Agent 负责打开原文、提取事实**
+详见 [`references/jev-integration.md`](references/jev-integration.md) 与 [`references/execution-lessons.md`](references/execution-lessons.md) 第 10 节。
 
 ## 目录结构
 

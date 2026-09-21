@@ -35,9 +35,9 @@ description: 执行企业Top30联网研究：对用户提供的约200家企业�
 ## Jev 可选决策层（面向任意 Skill/Agent，不依赖 Codex）
 Jev 通过 `scripts/jev_client.py` 直接调用 TypeSafe API；API key 只从环境变量 `TYPESAFE_API_KEY` 读取。执行环境有 key 时，优先把它用在高频、封闭判断上；没有 key 时原流程照常执行，不得伪造 Jev 输出。
 
-推荐分工：**搜索工具负责找，Jev负责筛/路由/判断，Python负责规则与数学，执行智能体负责打开原文、提取事实和处理低置信度/冲突项。** 搜索返回 title/snippet/url 后，先用 `jev_decide.py screen-search` 降低实际开页数；页面打开后把原文 passage 用 `route-evidence` 路由到粗采面或23维正式指标；定性项可用 `judge-band` 给封闭档位建议；写入 raw 前可用 `verify-claims` 做 claim-evidence 语义复核。
+推荐分工：**搜索工具负责找，Jev负责筛/路由/判断，Python负责规则与数学，执行智能体负责打开原文、提取事实和处理低置信度/冲突项。** 完整链应为：搜索候选写入 `jev/*-search.json` → `screen-search`（候选多时必做）→ 打开 keep 页 → passage 写入 `jev/*-passages.json` → `route-evidence --formal-metrics` → **执行智能体仅对 Jev matches 精读并写 raw**；定性项可用 `judge-band`；写入 raw 前可用 `verify-claims` 复核。禁止只跑 route 而跳过 search/screen，或用脚本生成假 saturated 日志。
 
-如果业务粗采采用“45个面”，这45面必须由业务方/skill明确写成 labels JSON 后传给 `route-evidence --labels`；**当前代码不内置45面清单，Jev不得自行发明。** `screen-search` 的 keep/skip 也只是优先级：未打开的候选不能据此直接宣布“查无证据”，saturated/缺省仍必须满足真实检索验收。详见 [Jev决策层接入](references/jev-integration.md)。
+如果业务粗采采用“45个面”，这45面必须由业务方/skill明确写成 labels JSON 后传给 `route-evidence --labels`；**当前代码不内置45面清单，Jev不得自行发明。** `screen-search` 的 keep/skip 也只是优先级：未打开的候选不能据此直接宣布“查无证据”，saturated/缺省仍必须满足真实检索验收。详见 [Jev决策层接入](references/jev-integration.md) 与 [执行经验沉淀](references/execution-lessons.md) 第10节。
 
 ## 候选池精采、Top30深查
 先用最新年报和官网填充所有可证实维度，再逐项按**当年S1→当年S2→当年S3→去年S1→去年S2→去年S3**补缺。年份按事实所属期，今年发布的去年年报仍属去年。S4只作追溯线索，前年只作比较，不参与当前分数。
