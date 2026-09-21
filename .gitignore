@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environment
+.venv/
+venv/
+
+# API keys / secrets
+.env
+.env.*
+*.key
+
+# IDE
+.idea/
+.vscode/
+
+# Cache
+cache/
+.cache/
+
+# Runtime output
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
