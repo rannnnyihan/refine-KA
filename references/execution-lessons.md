@@ -109,3 +109,36 @@
 5. 2026 未发布用 2025 不打折，三年全空才折算（第 5 节）。
 6. 补证重跑流水线，不手改 HTML 数字；手工 DOM 增量在重生成后复注（第 4、7、8 节）。
 7. 交付单文件 HTML，标题无草稿水印，但保留真实状态说明（第 7 节）。
+8. 有 `TYPESAFE_API_KEY` 时走 Jev 协作链（第 10 节），禁止只跑 route 或伪造 jev/ 产物。
+
+---
+
+## 10. Jev 协作链（不要只跑 route-evidence）
+
+**现象**：合合信息初跑 Jev 参与度 0%，19/20 证据来自同一 PDF；信正木业只 route 未 screen；缺口维用脚本生成假 saturated 日志。
+
+**推荐链**（详见 [jev-integration.md](jev-integration.md)）：
+
+```
+搜索 → *-search.json → screen-search → 开 keep 页 → *-passages.json
+     → route-evidence --formal-metrics → Agent 只对 matches 写 raw
+```
+
+**分工牢记**：
+
+| Jev | Agent |
+|-----|-------|
+| 哪些链接值得开（screen） | 打开页面、摘录 passage |
+| 一段 passage 贴哪几维（route） | fact / band / measurement / searches |
+| 可选：档位建议（judge-band） | 最终 band 必须是 rubric 标签原文 |
+| 可选：claim 复核（verify-claims） | saturated 须 S1–S4 真实日志，不能因 Jev skip 就查无 |
+
+**screen-search 可跳过的情况**：年报 URL 已确定、单企业且候选 ≤3。跳过 ≠ 不检索。
+
+**route-evidence 几乎总是值得做**：一段年报财务摘要可同时命中 revenue / capex / rd / export / rd_intensity；无 route 时 Agent 易漏维或单源重复贴 19 格。
+
+**补证**：每个缺口维单独搜 → 可追加 search.json → screen → passage → route → 更新 raw。不要用占位 searches 冒充 saturated。
+
+**macOS**：Jev API 若 SSL 失败，`export SSL_CERT_FILE=$(python3 -m certifi)`。
+
+**评分器**：2026YTD 无 verified 时，回退应优先选最近一期 `score_basis in ('evidence','default')` 的记录，避免误选 pending 导致假低分（见 `score_companies.py` 期次回退修复）。

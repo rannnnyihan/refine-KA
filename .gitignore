@@ -1,11 +1,9 @@
-# Python
+.env
 __pycache__/
 *.pyc
-*.pyo
-
-# Virtual environment
-.venv/
-venv/
+.pytest_cache/
+runs/
+inputs/
 
 # API keys / secrets
 .env

@@ -144,3 +144,89 @@ python scripts/jev_decide.py --dry-run screen-search ...
 ```
 
 Dry-run 的概率全部是占位零值，只能验证 schema，**绝不能用于筛选或评分**。
+
+## 推荐完整链路（实战沉淀）
+
+以下顺序来自商飞 / 合合信息 / 信正木业等多轮运行，优先级高于「只跑 route-evidence」的捷径。
+
+```
+网页搜索（Agent）
+  → 保存 *-search.json
+  → jev screen-search（可选但推荐）
+  → 只打开 keep=true 的 URL（Agent）
+  → 提取 passage → *-passages.json（Agent）
+  → jev route-evidence --formal-metrics
+  → 只对 matches 精读：fact / band / measurement / searches（Agent）
+  → （可选）judge-band / verify-claims
+  → raw/batch*.json → ingest → score
+```
+
+### 四步分工（Jev vs Agent）
+
+| 步骤 | 谁做 | 输出 | 不能做什么 |
+|------|------|------|------------|
+| **screen-search** | Jev | keep/skip + 概率 | 不能代替开页；skip 的链接若某维要 saturated 仍须单独补搜 |
+| **route-evidence** | Jev | 每段 passage × 23 维概率 + `matches` | 不能写 raw；不能定 band；不能算同比 |
+| **精读写 raw** | Agent | sources / searches / band / detail | 不能只信 Jev 概率就 verified |
+| **score / audit** | Python | 分数、完整度、warnings | 不读网页 |
+
+**route-evidence 与 Agent 手工路由的区别**：Jev 对每段 passage 固定问 23+1 个封闭问题，返回 0–1 概率；Agent 若一步完成「读 passage + 定档 + 写 raw」，容易漏维或把一段财务摘要过度贴到无关维。推荐 **Jev 出 matches 清单，Agent 只对 matches 做 authoritative 定档**。
+
+### 何时必须 screen-search
+
+- 粗采 / 缺口补证：同一企业 **≥8 条** 搜索候选，或有明显误命中（其他公司年报、同行业龙头）
+- 200→40 批量粗采：几乎总是值得做
+
+### 何时可跳过 screen-search
+
+- 目标 URL 已确定（如科创板 `688615` → cninfo 2024 年报 PDF）
+- 单企业 demo 且候选 ≤3 条且均相关
+- **跳过 screen 不等于跳过检索**；缺口维 saturated 仍须 S1→S4 真实日志
+
+### 补证阶段（最容易漏 Jev 的环节）
+
+对 `capacity` / `ma` / `green_certification` 等缺口维：
+
+1. 按维单独搜索 → 追加到 `*-search.json`（或分维 `*-search-<metric>.json`）
+2. **screen-search** 后再开页（不要脚本批量生成假 saturated 日志）
+3. 新 passage → **route-evidence** → 更新 raw → 重跑 ingest / score
+
+合合信息补证教训：初跑仅 route 未 screen、19/20 证据来自同一 PDF；补证后加多源 + route，证据条数与 URL 数才上升。
+
+### macOS SSL
+
+若 `route-evidence` / `screen-search` 报 `CERTIFICATE_VERIFY_FAILED`：
+
+```bash
+export SSL_CERT_FILE=$(python3 -m certifi)
+```
+
+### 单企业最小 Jev 命令（复制即用）
+
+```bash
+export TYPESAFE_API_KEY="..."
+export SSL_CERT_FILE=$(python3 -m certifi)
+
+python scripts/jev_decide.py screen-search \
+  --input  runs/<run>/jev/C-001-search.json \
+  --output runs/<run>/jev/C-001-screened.json \
+  --company "企业全称" --company-id C-001 \
+  --industry "行业" --region "地区"
+
+python scripts/jev_decide.py route-evidence \
+  --input  runs/<run>/jev/C-001-passages.json \
+  --output runs/<run>/jev/C-001-routed.json \
+  --company "企业全称" \
+  --formal-metrics
+```
+
+`route-evidence` 仅需 `--input --output --company`（加 `--formal-metrics`）；不要传 `--company-id`（当前 CLI 不支持）。
+
+### artifacts 验收清单
+
+跑完 Jev 后检查 `<run>/jev/`：
+
+- [ ] 有 search 则应有 screened（或文档说明为何跳过）
+- [ ] 有 passages 则应有 routed
+- [ ] `routing-summary.json`（可选）：passage id → metric 对照，方便写 raw
+- [ ] raw 里 `detail.status_context` 可注明「Jev P00x 路由命中」，但 **band 仍由 Agent 对照 rubric 确定**
