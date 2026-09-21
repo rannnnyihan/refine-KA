@@ -1,0 +1,10 @@
+[
+  {
+    "id": "R001",
+    "company_id": "C-001",
+    "query": "示例企业 扩产 2026",
+    "title": "示例企业新建生产基地",
+    "snippet": "示例格式：项目预计2026年投产。实际运行必须替换为搜索工具真实返回的标题与摘要。",
+    "url": "https://example.com/synthetic-result"
+  }
+]
