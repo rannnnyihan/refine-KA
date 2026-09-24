@@ -25,13 +25,59 @@ def md_config(name):
         raise ValueError(f'{name}: 必须且只能有一个JSON规则块')
     return json.loads(blocks[0])
 
+# scoring-standard-company.md 中表示「搜不到 / 无」的缺省档位原文。
+MISSING_BAND_LABELS = ('查不到', '无法确认排名', '无公开信息', '无')
+MISSING_BAND_ALIASES = {'搜不到': '查不到'}
+
+
+def canonical_band(label):
+    if not label:
+        return label
+    return MISSING_BAND_ALIASES.get(label, label)
+
+
+def resolve_default_band(bands):
+    """从评分标准档位中取「搜不到 / 无」缺省档，没有则 (None, None)。"""
+    by_label = dict(bands)
+    for label in MISSING_BAND_LABELS:
+        if label in by_label:
+            return label, by_label[label]
+    return None, None
+
+
+def is_missing_or_none_band(label, bands):
+    canon = canonical_band(label)
+    return bool(canon) and canon in dict(bands) and canon in MISSING_BAND_LABELS
+
+
 def rules():
     rubric = md_config('scoring-standard-company.md')
-    items = [dict(i, group=g['label']) for g in rubric['groups'] for i in g['items']]
-    assert len(items) == 23 and len({i['id'] for i in items}) == 23
+    items = [
+        dict(i, group=g['label'])
+        for g in rubric['groups']
+        for i in g['items']
+    ]
+
+    assert len(items) == 23
+    assert len({i['id'] for i in items}) == 23
     assert sum(i['max'] for i in items) == rubric['total'] == 100
+
+    for item in items:
+        default_band = item.get('default_band')
+
+        assert default_band is not None, (
+            f"{item['id']} 缺少 default_band"
+        )
+
+        bands = dict(item['bands'])
+
+        assert default_band in bands, (
+            f"{item['id']} 的 default_band 不存在于 bands 中"
+        )
+
     weights = md_config('evidence-sources.md')['weights']
     assert 1 >= weights['S1'] > weights['S2'] > weights['S3'] > weights['S4'] > 0
+
     return rubric, items, weights
 
 def rule_hash():

@@ -173,6 +173,75 @@ class Tests(unittest.TestCase):
         self.assertEqual(m['score_basis'],'default')
         self.assertEqual(m['default_band'],'无')
 
+    def test_all_missing_or_none_results_use_rubric_default(self):
+        from common import resolve_default_band
+        _, items, _ = rules()
+        def change(rows):
+            for o in rows:
+                o.update(status='unverified',band=None,decision_evidence_ids=[],applicable_for_current=False)
+        self.mutate('observations.json',change)
+        c=calculate(self.p)['main'][0]
+        expected_defaults=expected_raw=0
+        for item, m in zip(items, c['metrics']):
+            label, score = resolve_default_band(item['bands'])
+            if label is None:
+                self.assertEqual(m['score_basis'],'unrated')
+                self.assertIsNone(m['raw_score'])
+                continue
+            self.assertEqual(m['score_basis'],'default')
+            self.assertEqual(m['default_band'],label)
+            self.assertEqual(m['raw_score'],score)
+            expected_defaults += 1
+            expected_raw += score
+        self.assertEqual(expected_defaults,21)
+        self.assertEqual(c['default_count'],21)
+        self.assertEqual(c['raw_unrated_count'],2)
+        self.assertEqual(c['raw_total'],expected_raw)
+        self.assertEqual(c['weighted_total'],expected_raw)
+
+    def test_verified_missing_or_none_band_uses_rubric_default(self):
+        def change(rows):
+            for o in rows:
+                if o['metric_id']=='revenue_growth':
+                    o.update(band='查不到',applicable_for_current=True)
+                elif o['metric_id']=='national_qualification':
+                    o.update(band='无',applicable_for_current=True)
+        self.mutate('observations.json',change)
+        c=calculate(self.p)['main'][0]
+        self.assertEqual(c['metrics'][0]['score_basis'],'default')
+        self.assertEqual(c['metrics'][0]['default_band'],'查不到')
+        self.assertEqual(c['metrics'][0]['raw_score'],2)
+        self.assertEqual(c['metrics'][19]['score_basis'],'default')
+        self.assertEqual(c['metrics'][19]['default_band'],'无')
+        self.assertEqual(c['metrics'][19]['raw_score'],0)
+        self.assertEqual(c['default_count'],2)
+        self.assertEqual(c['raw_total'],93)
+        self.assertEqual(c['weighted_total'],93)
+
+    def test_soubudao_alias_uses_chabudao_default(self):
+        def change(rows):
+            for o in rows:
+                if o['metric_id']=='revenue_growth':
+                    o.update(band='搜不到',applicable_for_current=True)
+        self.mutate('observations.json',change)
+        c=calculate(self.p)['main'][0]
+        self.assertEqual(c['metrics'][0]['score_basis'],'default')
+        self.assertEqual(c['metrics'][0]['default_band'],'查不到')
+        self.assertEqual(c['metrics'][0]['raw_score'],2)
+        self.assertEqual(c['weighted_total'],97)
+
+    def test_unverified_explicit_missing_band_uses_rubric_default(self):
+        def change(rows):
+            for o in rows:
+                if o['metric_id']=='revenue_growth':
+                    o.update(status='unverified',band='查不到',decision_evidence_ids=[],applicable_for_current=False)
+        self.mutate('observations.json',change)
+        c=calculate(self.p)['main'][0]
+        self.assertEqual(c['metrics'][0]['score_basis'],'default')
+        self.assertEqual(c['metrics'][0]['default_band'],'查不到')
+        self.assertEqual(c['metrics'][0]['raw_score'],2)
+        self.assertEqual(c['weighted_total'],97)
+
     def test_unfinished_cannot_claim_default(self):
         def change(rows):
             for o in rows:

@@ -136,9 +136,13 @@ def calculate(path, stage="final"):
             require(any(evidence[e]['period'] == period for e in decision), '只有比较基数不能证明当期指标')
             require(all(evidence[e]['published_date'] != 'undated' or period == PERIODS[-1] for e in decision), '无日期官网不能证明历史年份')
         if o['status'] == 'verified':
-            bands = dict(item_map[mid]['bands'])
+            item = item_map[mid]
+            bands = dict(item['bands'])
+            default_band_config = item.get('default_band')
+            require(default_band_config is not None, f'{mid} 未配置 default_band')
+            require(default_band_config in bands, f'{mid} 的 default_band 不存在于评分档位')
             require(o.get('band') in bands, f'{key} 档位不在Markdown规则中')
-            require(o['band'] not in ('查不到','无法确认排名','无公开信息'), '缺省档位不能标为已证实')
+            require(o['band'] != default_band_config, '缺省档位不能标为已证实')
             score = bands[o['band']]
             groups = o.get('decision_evidence_groups', [decision])
             require(isinstance(groups,list) and bool(groups) and all(isinstance(g,list) and bool(g) for g in groups), '独立证据组格式错误')
@@ -150,25 +154,23 @@ def calculate(path, stage="final"):
             score_basis = 'evidence'
         elif o['status'] == 'unverified':
             require(o['search_state'] == 'saturated', '缺省分必须完成检索验收')
-            bands = item_map[mid]['bands']
-            defaults = [(label, v) for label, v in bands if label in ('查不到','无法确认排名','无公开信息')]
-            if not defaults:
-                # 政策/资质类指标的 0 分地板档（'无'）视作"检索无果"的缺省：
-                # 已饱和检索仍查不到国家级资质/荣誉/绿色认证/政策扶持时，取'无'=0 计入排名，
-                # 而不是把整维度静默丢弃（这正是电子版比生科版少维度/少分的根因）。
-                # rd_intensity 等刻意不设缺省档的指标，其地板不是'无'，不会落入此分支。
-                floor_label, floor_score = min(bands, key=lambda kv: kv[1])
-                if floor_label == '无':
-                    defaults = [(floor_label, floor_score)]
-            require(len(defaults) <= 1, '同一指标只能定义一个缺省档位')
-            if defaults:
-                default_band, score = defaults[0]
-                score_basis = 'default'
+            item = item_map[mid]
+            bands = dict(item['bands'])
+            default_band = item.get('default_band')
+            require(default_band is not None, f'{mid} 未配置 default_band')
+            require(default_band in bands, f'{mid} 的 default_band 不存在于评分档位')
+            score = bands[default_band]
+            score_basis = 'default'
         else:
             require(not o.get('band'), '受阻/规则待明确不能填写档位')
         if o['status'] == 'unverified':
             require(not o.get('band'), '未证实项不能人为指定档位')
-        contribution = score if score_basis == 'default' else (score or 0)*(weight or 0)
+        if score_basis == 'default':
+            contribution = score
+        elif score_basis == 'evidence':
+            contribution = score * weight
+        else:
+            contribution = None
         observations[key] = dict(o, raw_score=score, source_weight=weight, weighted_score=contribution,
                                  score_basis=score_basis, default_band=default_band,
                                  selected_evidence_group=selected_group)
@@ -203,19 +205,13 @@ def calculate(path, stage="final"):
                         and r['status'] == 'verified'
                         and r.get('applicable_for_current') is True]
             # Evidence valid for its own period can be obsolete for current ranking.
-            if verified:
-                selected = verified[0]
-            else:
-                allowed_rows = [r for r in reversed(rows) if r['period'] in allowed_periods]
-                selected = next(
-                    (r for r in allowed_rows if r.get('score_basis') in ('evidence', 'default')),
-                    rows[-1],
-                )
+            selected = verified[0] if verified else rows[-1]
             if selected['status'] == 'verified' and selected.get('applicable_for_current') is not True:
-                selected = dict(selected, raw_score=None, weighted_score=0, status='unverified', score_basis='unrated', source_weight=None)
-            raw += selected['raw_score'] or 0; weighted += selected['weighted_score']
+                selected = dict(selected, raw_score=None, weighted_score=None, status='unverified', score_basis='unrated', source_weight=None)
+            raw += selected['raw_score'] or 0
+            weighted += selected['weighted_score'] or 0
             if selected['score_basis'] == 'default':
-                default_total += selected['weighted_score']; default_count += 1
+                default_total += selected['weighted_score'] or 0; default_count += 1
             if selected['status'] == 'verified':
                 coverage += item['max']
                 if selected['period'] == PERIODS[-1]: current += item['max']
@@ -254,11 +250,15 @@ def calculate(path, stage="final"):
                         f'不能作为"已披露边界"通过验收')
                 else:
                     warnings.append(
-                        f'维度"{i["label"]}"在主榜仍有{st["unrated"]}个未定档单元格，已被静默计0，'
-                        f'建议回填以区分"真0分"与"未研究"')
-        if evidence_cells < n_cells:
-            warnings.append(f'23维证据尚未齐全：{n_cells-evidence_cells}项使用缺省或未定档；当前结果为阶段性，继续按缺口补证')
+                        f'维度"{i["label"]}"在主榜仍有{st["unrated"]}个未定档单元格；'
+                        f'当前未定档项不会伪装成真实0分，请检查是否仍为pending，'
+                        f'或是否应结算为saturated-default / blocked / rule_gap')
         coverage = evidence_cells / n_cells if n_cells else 0
+        if evidence_cells < n_cells:
+            warnings.append(
+                f'主榜证据定档率为{coverage:.0%}（{evidence_cells}/{n_cells}单元格为evidence定档）。'
+                f'default/blocked/rule_gap属于研究终态时不应因证据率未满而重复执行无新增搜索；'
+                f'是否仍需精采应以audit中的pending缺口为准')
         if coverage < 0.5:
             warnings.append(
                 f'主榜证据覆盖率仅{coverage:.0%}（{evidence_cells}/{n_cells}单元格为evidence定档），'
@@ -278,7 +278,12 @@ def calculate(path, stage="final"):
         from audit_top30 import audit
         out['quality_review'] = audit(out)
         write(p/'top30-quality.json', out['quality_review'])
-        if out['quality_review']['status'] != 'complete': out['status'] = 'provisional'
+        if out['quality_review']['status'] != 'complete':
+            out['status'] = 'provisional'
+        else:
+            # Warnings disclose limitations; they do not by themselves mean the
+            # research is unfinished once the audit confirms all cells are terminal.
+            out['status'] = 'research_complete_with_disclosed_limits'
     write(p/('prescreen-scores.json' if stage == 'prescreen' else 'scores.json'), out)
     return out
 
