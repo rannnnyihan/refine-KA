@@ -63,17 +63,16 @@ def rules():
     assert sum(i['max'] for i in items) == rubric['total'] == 100
 
     for item in items:
-        default_band = item.get('default_band')
-
-        assert default_band is not None, (
-            f"{item['id']} 缺少 default_band"
-        )
-
         bands = dict(item['bands'])
-
-        assert default_band in bands, (
-            f"{item['id']} 的 default_band 不存在于 bands 中"
-        )
+        explicit = item.get('default_band')
+        if explicit is not None:
+            assert explicit in bands, (
+                f"{item['id']} 的 default_band 不存在于 bands 中"
+            )
+            item['default_band'] = explicit
+        else:
+            label, _ = resolve_default_band(item['bands'])
+            item['default_band'] = label
 
     weights = md_config('evidence-sources.md')['weights']
     assert 1 >= weights['S1'] > weights['S2'] > weights['S3'] > weights['S4'] > 0

@@ -252,7 +252,7 @@ for grp in rub["groups"]:
     body = "".join(
         f'<tr><td>{esc(it["no"])}</td><td>{esc(it["label"])}</td>'
         f'<td>{"；".join(esc(b[0])+" = "+str(b[1]) for b in it["bands"])}</td>'
-        f'<td>{esc("、".join(it["sources"]))}</td></tr>' for it in grp["items"])
+        f'<td>{esc("、".join(it.get("sources") or []))}</td></tr>' for it in grp["items"])
     rubric_html += (f'<section class="rubric-group"><h3>{esc(grp["label"])}<span>{esc(grp["weight"])} 分</span></h3>'
                     f'<div class="rubric-body"><table><thead><tr><th>#</th><th>指标</th><th>分档</th><th>建议来源</th></tr></thead>'
                     f'<tbody>{body}</tbody></table></div></section>')

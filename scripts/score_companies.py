@@ -2,7 +2,7 @@
 import argparse
 import datetime as dt
 from pathlib import Path
-from common import periods_for, date, http_url, nonempty, read, rule_hash, rules, unique, write
+from common import periods_for, date, http_url, nonempty, read, rule_hash, rules, unique, write, canonical_band, is_missing_or_none_band
 
 def require(condition, message):
     if not condition:
@@ -139,32 +139,50 @@ def calculate(path, stage="final"):
             item = item_map[mid]
             bands = dict(item['bands'])
             default_band_config = item.get('default_band')
-            require(default_band_config is not None, f'{mid} 未配置 default_band')
-            require(default_band_config in bands, f'{mid} 的 default_band 不存在于评分档位')
-            require(o.get('band') in bands, f'{key} 档位不在Markdown规则中')
-            require(o['band'] != default_band_config, '缺省档位不能标为已证实')
-            score = bands[o['band']]
-            groups = o.get('decision_evidence_groups', [decision])
-            require(isinstance(groups,list) and bool(groups) and all(isinstance(g,list) and bool(g) for g in groups), '独立证据组格式错误')
-            require({e for g in groups for e in g} == set(decision), '证据组须与判定证据ID一致')
-            require(all(any(evidence[e]['period'] == period for e in g) for g in groups), '每个独立证据组必须有当期证据')
-            # Each group is independently sufficient; all members within a group are necessary.
-            selected_group = max(groups, key=lambda g:min(weights[evidence[e]['grade']] for e in g))
-            weight = min(weights[evidence[e]['grade']] for e in selected_group)
-            score_basis = 'evidence'
+            band = canonical_band(o.get('band'))
+            use_default = (
+                band is None
+                or default_band_config is not None and band == default_band_config
+                or is_missing_or_none_band(band, item['bands'])
+            )
+            if use_default:
+                if default_band_config is None:
+                    score_basis = 'unrated'
+                else:
+                    require(default_band_config in bands, f'{mid} 的 default_band 不存在于评分档位')
+                    default_band = default_band_config
+                    score = bands[default_band_config]
+                    score_basis = 'default'
+            else:
+                require(band in bands, f'{key} 档位不在Markdown规则中')
+                require(band != default_band_config, '缺省档位不能标为已证实')
+                score = bands[band]
+                groups = o.get('decision_evidence_groups', [decision])
+                require(isinstance(groups,list) and bool(groups) and all(isinstance(g,list) and bool(g) for g in groups), '独立证据组格式错误')
+                require({e for g in groups for e in g} == set(decision), '证据组须与判定证据ID一致')
+                require(all(any(evidence[e]['period'] == period for e in g) for g in groups), '每个独立证据组必须有当期证据')
+                selected_group = max(groups, key=lambda g:min(weights[evidence[e]['grade']] for e in g))
+                weight = min(weights[evidence[e]['grade']] for e in selected_group)
+                score_basis = 'evidence'
         elif o['status'] == 'unverified':
             require(o['search_state'] == 'saturated', '缺省分必须完成检索验收')
             item = item_map[mid]
             bands = dict(item['bands'])
             default_band = item.get('default_band')
-            require(default_band is not None, f'{mid} 未配置 default_band')
-            require(default_band in bands, f'{mid} 的 default_band 不存在于评分档位')
-            score = bands[default_band]
-            score_basis = 'default'
+            if default_band is None:
+                score_basis = 'unrated'
+            else:
+                require(default_band in bands, f'{mid} 的 default_band 不存在于评分档位')
+                if o.get('band'):
+                    band = canonical_band(o.get('band'))
+                    require(
+                        band in (default_band, None) or is_missing_or_none_band(band, item['bands']),
+                        '未证实项不能人为指定非缺省档位',
+                    )
+                score = bands[default_band]
+                score_basis = 'default'
         else:
             require(not o.get('band'), '受阻/规则待明确不能填写档位')
-        if o['status'] == 'unverified':
-            require(not o.get('band'), '未证实项不能人为指定档位')
         if score_basis == 'default':
             contribution = score
         elif score_basis == 'evidence':
@@ -205,7 +223,13 @@ def calculate(path, stage="final"):
                         and r['status'] == 'verified'
                         and r.get('applicable_for_current') is True]
             # Evidence valid for its own period can be obsolete for current ranking.
-            selected = verified[0] if verified else rows[-1]
+            selected = verified[0] if verified else None
+            if selected is None:
+                allowed_rows = [r for r in reversed(rows) if r['period'] in allowed_periods]
+                selected = next(
+                    (r for r in allowed_rows if r.get('score_basis') in ('evidence', 'default')),
+                    rows[-1],
+                )
             if selected['status'] == 'verified' and selected.get('applicable_for_current') is not True:
                 selected = dict(selected, raw_score=None, weighted_score=None, status='unverified', score_basis='unrated', source_weight=None)
             raw += selected['raw_score'] or 0
